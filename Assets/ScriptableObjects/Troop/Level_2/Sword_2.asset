@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8291cafe750f9eb458a34f1b431e80fd, type: 3}
+  m_Name: Sword_2
+  m_EditorClassIdentifier: 
+  id: 02.1
+  displayName: Sword_2
+  level: 1
+  prefab: {fileID: 3058403523092378306, guid: 4d6fb09522a9a8345961b5ff1e111b51, type: 3}
+  baseAttack: 0
+  baseDefense: 0
+  baseRange: 0
+  baseCritChance: 0.05
+  icon: {fileID: 0}
