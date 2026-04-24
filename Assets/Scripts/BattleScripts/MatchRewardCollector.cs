@@ -7,17 +7,19 @@ public class MatchRewardCollector : MonoBehaviour
     public GridManager gridManager;
     public PlayerArmyState armyState;
 
+    [Header("Rules")]
+    public bool requireEquipped = false;
 
-    // Her birlik tipi için toplam asker sayısı
-    private Dictionary<TroopTypeSO, int> _troopCounts = new Dictionary<TroopTypeSO, int>();
+    // Debug/collector toplamları (istersen tamamen kaldırılabilir)
+    private readonly Dictionary<TroopTypeSO, int> _troopCounts = new Dictionary<TroopTypeSO, int>();
 
-    void OnEnable()
+    private void OnEnable()
     {
         if (gridManager != null)
             gridManager.OnMatchResolved += OnMatchResolved;
     }
 
-    void OnDisable()
+    private void OnDisable()
     {
         if (gridManager != null)
             gridManager.OnMatchResolved -= OnMatchResolved;
@@ -31,9 +33,7 @@ public class MatchRewardCollector : MonoBehaviour
     public int GetSoldierCount(TroopTypeSO troop)
     {
         if (troop == null) return 0;
-        if (_troopCounts.TryGetValue(troop, out int c))
-            return c;
-        return 0;
+        return _troopCounts.TryGetValue(troop, out int c) ? c : 0;
     }
 
     public Dictionary<TroopTypeSO, int> GetAllRewardsCopy()
@@ -43,8 +43,6 @@ public class MatchRewardCollector : MonoBehaviour
 
     private void OnMatchResolved(GridManager.MatchInfo info)
     {
-        Debug.Log($"[RewardCollector] Match geldi: kind={info.kind}, piece={info.pieceType?.name}");
-
         if (armyState == null || info.pieceType == null)
         {
             Debug.LogWarning("[RewardCollector] armyState veya pieceType NULL, ödül yazılmadı.");
@@ -54,9 +52,8 @@ public class MatchRewardCollector : MonoBehaviour
         PieceType piece = info.pieceType;
         bool isSpecialMatch = IsSpecialKind(info.kind);
 
-        TroopTypeSO troop = isSpecialMatch && piece.specialTroop != null
-            ? piece.specialTroop
-            : piece.normalTroop;
+        TroopTypeSO troop =
+            (isSpecialMatch && piece.specialTroop != null) ? piece.specialTroop : piece.normalTroop;
 
         if (troop == null)
         {
@@ -65,18 +62,21 @@ public class MatchRewardCollector : MonoBehaviour
         }
 
         bool equipped = armyState.IsTroopEquipped(troop);
-        Debug.Log($"[RewardCollector] Seçilen troop = {troop.name}, equipped={equipped}, currentSlots={armyState.CurrentUnitSlots}");
+        Debug.Log($"[RewardCollector] Seçilen troop={troop.name}, equipped={equipped}, currentSlots={armyState.CurrentUnitSlots}");
 
-        if (!equipped)
+        if (requireEquipped && !equipped)
         {
-            Debug.Log($"[RewardCollector] {troop.name} aktif slotlarda değil, ödül yazılmadı.");
+            Debug.Log($"[RewardCollector] {troop.name} aktif değil, ödül yazılmadı. (requireEquipped=true)");
             return;
         }
 
+
         int addCount;
+
         if (isSpecialMatch)
         {
             addCount = 1;
+
             if (piece.grantExtraUnitOnSpecial)
                 armyState.IncreaseUnitSlots(1);
         }
@@ -85,14 +85,14 @@ public class MatchRewardCollector : MonoBehaviour
             addCount = Mathf.Max(1, info.tileCount);
         }
 
-        if (_troopCounts.ContainsKey(troop))
-            _troopCounts[troop] += addCount;
-        else
-            _troopCounts[troop] = addCount;
+        // Collector toplamı (debug)
+        _troopCounts[troop] = GetSoldierCount(troop) + addCount;
 
-        Debug.Log($"[Reward] {troop.displayName} → +{addCount} asker. Toplam: {_troopCounts[troop]}");
+        // ✅ Gerçek kaynak: PlayerArmyState
+        armyState.AddTroops(troop, addCount);
+
+        Debug.Log($"[Reward] {troop.displayName} → +{addCount} asker. CollectorToplam: {_troopCounts[troop]}");
     }
-
 
     private bool IsSpecialKind(GridManager.MatchKind kind)
     {

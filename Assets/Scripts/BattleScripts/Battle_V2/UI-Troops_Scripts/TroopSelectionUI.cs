@@ -4,74 +4,94 @@ using UnityEngine;
 public class TroopSelectionUI : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private TroopSelectionController selection;   // TroopSelection
-    [SerializeField] private RectTransform buttonContainer;        // content
-    [SerializeField] private TroopButtonView troopButtonPrefab;
-    [SerializeField] private TroopCountProvider countProvider;
-    [SerializeField] private TroopPanelDragScroll dragScroll;      // <<< YENÝ: Scroll scripti
+    public TroopSelectionController selection;
+    public RectTransform buttonContainer;
+    public TroopButtonView troopButtonPrefab;
+    public TroopCountProvider countProvider;
 
-    private readonly List<TroopButtonView> _spawnedButtons = new List<TroopButtonView>();
+    // Oluþturulan butonlarý troop'a göre tut
+    private readonly Dictionary<TroopTypeSO, TroopButtonView> _buttonsByTroop = new();
 
-    private void Start()
+    private void OnEnable()
     {
-        BuildButtons();
+        if (countProvider == null)
+            countProvider = FindFirstObjectByType<TroopCountProvider>();
+
+        if (selection == null)
+            selection = FindFirstObjectByType<TroopSelectionController>();
+
+        // En kritik: event'e baðlan
+        if (countProvider != null)
+            countProvider.OnCountsChanged += HandleCountsChanged;
+
+        // Ýlk çizim
+        RebuildFromInventory();
+        RefreshCounts();
     }
 
-    public void BuildButtons()
+    private void OnDisable()
     {
-        // Eski butonlarý temizle
-        foreach (var b in _spawnedButtons)
-        {
-            if (b != null)
-                Destroy(b.gameObject);
-        }
-        _spawnedButtons.Clear();
+        if (countProvider != null)
+            countProvider.OnCountsChanged -= HandleCountsChanged;
+    }
 
-        if (selection == null || selection.availableTroops == null)
-        {
-            Debug.LogWarning("[TroopSelectionUI] Selection/availableTroops yok.");
+    private void HandleCountsChanged()
+    {
+        // Yeni troop eklenmiþ olabilir
+        RebuildFromInventory();
+        RefreshCounts();
+    }
+
+    /// <summary>
+    /// PlayerArmyState envanterinde olan troop'lar için butonlarý üretir.
+    /// Oyun baþýnda envanter boþsa buton oluþmaz.
+    /// </summary>
+    private void RebuildFromInventory()
+    {
+        if (buttonContainer == null || troopButtonPrefab == null || countProvider == null)
             return;
-        }
 
-        for (int i = 0; i < selection.availableTroops.Count; i++)
+        // Envanterde hangi trooplar var?
+        List<TroopTypeSO> ownedTroops = countProvider.GetOwnedTroops(); // aþaðýda provider'a ekleyeceðiz
+
+        // 1) Yeni trooplar için buton oluþtur
+        for (int i = 0; i < ownedTroops.Count; i++)
         {
-            TroopTypeSO troop = selection.availableTroops[i];
-            if (troop == null)
+            TroopTypeSO troop = ownedTroops[i];
+            if (troop == null) continue;
+
+            if (_buttonsByTroop.ContainsKey(troop))
                 continue;
 
-            int count = countProvider != null ? countProvider.GetCount(troop) : 0;
-
             var btn = Instantiate(troopButtonPrefab, buttonContainer);
-            btn.name = $"TroopButton_{troop.displayName}";
-            btn.Init(troop, i, selection, count);
+            int initial = countProvider.GetCount(troop);
 
-            _spawnedButtons.Add(btn);
+            // index: selection için gerekebilir. Burada "owned list" index'i veriyoruz.
+            btn.Init(troop, i, selection, initial);
+            _buttonsByTroop[troop] = btn;
         }
 
-        Debug.Log($"[TroopSelectionUI] BuildButtons, troopCount={selection.availableTroops.Count}");
-
-        // --- ÖNEMLÝ: Layout’u güncelle + scroll sýnýrlarýný hesapla ---
-        if (dragScroll != null)
-        {
-            dragScroll.RecalculateBounds();
-        }
-        else
-        {
-            Debug.LogWarning("[TroopSelectionUI] dragScroll referansý atanmadý.");
-        }
+        // 2) Ýstersen count=0 olanlarý kaldýr/gizle. Þimdilik KALDIRMIYORUZ (stabil kalsýn).
+        // Eðer kaldýrmak istersen:
+        // - ownedTroops listesinde olmayanlarý Destroy et.
     }
 
-    /// <summary> Asker sayýlarý deðiþtiðinde (yerleþtirme, ödül, vs) çaðýr. </summary>
     public void RefreshCounts()
     {
-        if (countProvider == null || selection == null)
-            return;
-
-        for (int i = 0; i < _spawnedButtons.Count && i < selection.availableTroops.Count; i++)
+        if (countProvider == null)
         {
-            var troop = selection.availableTroops[i];
-            int count = countProvider.GetCount(troop);
-            _spawnedButtons[i].RefreshCount(count);
+            countProvider = FindFirstObjectByType<TroopCountProvider>();
+            if (countProvider == null) return;
+        }
+
+        foreach (var kv in _buttonsByTroop)
+        {
+            TroopTypeSO troop = kv.Key;
+            TroopButtonView btn = kv.Value;
+            if (btn == null) continue;
+
+            int c = countProvider.GetCount(troop);
+            btn.RefreshCount(c);
         }
     }
 }

@@ -1,70 +1,36 @@
 ﻿using UnityEngine;
-using UnityEngine.InputSystem;
 
 public class HexPlacementInput : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private Camera mainCamera;
-    [SerializeField] private LayerMask hexLayerMask;
-    [SerializeField] private BattleDeploymentState deploymentState;
-    [SerializeField] private TroopSelectionController selection;
+    [SerializeField] private PlayerArmyState armyState;
     [SerializeField] private TroopCountProvider countProvider;
-    [SerializeField] private ArmySpawnerHex armySpawner;
-    [SerializeField] private TroopSelectionUI troopUI;   // UI referansı
+    [SerializeField] private TroopSelectionUI troopUI;
+    [SerializeField] private BattleDeploymentState deploymentState;
+    [SerializeField] private ArmySpawnerHorizontal armySpawner;
 
     private void Awake()
     {
-        if (mainCamera == null)
-            mainCamera = Camera.main;
+        if (armyState == null) armyState = FindFirstObjectByType<PlayerArmyState>();
+        if (countProvider == null) countProvider = FindFirstObjectByType<TroopCountProvider>();
+        if (troopUI == null) troopUI = FindFirstObjectByType<TroopSelectionUI>();
+        if (deploymentState == null) deploymentState = FindFirstObjectByType<BattleDeploymentState>();
+        if (armySpawner == null) armySpawner = FindFirstObjectByType<ArmySpawnerHorizontal>();
     }
 
-    private void Update()
+    // Örnek: hex'e troop koyma (senin dosyanda isim farklı olabilir)
+    private void TryPlaceToHex(UnitSlotHex hex, TroopTypeSO troop)
     {
-        if (Mouse.current == null)
-            return;
+        if (troop == null || hex == null) return;
 
-        Vector2 screenPos = Mouse.current.position.ReadValue();
-
-        Ray ray = mainCamera.ScreenPointToRay(screenPos);
-        RaycastHit2D hit = Physics2D.GetRayIntersection(ray, Mathf.Infinity, hexLayerMask);
-
-        if (!hit.collider)
-            return;
-
-        var hex = hit.collider.GetComponent<UnitSlotHex>();
-        if (hex == null)
+        // önce asker var mı kontrol (UI provider üzerinden değil, state üzerinden)
+        if (armyState == null)
         {
-            Debug.Log("[HexPlacement] Raycast, UnitSlotHex olmayan collider’a çarptı: " +
-                      hit.collider.name);
+            Debug.LogWarning("[HexPlacement] armyState NULL");
             return;
         }
 
-        if (Mouse.current.leftButton.wasPressedThisFrame)
-        {
-            TryPlaceOnHex(hex);
-        }
-        else if (Mouse.current.rightButton.wasPressedThisFrame)
-        {
-            TryRemoveFromHex(hex);
-        }
-    }
-
-    private void TryPlaceOnHex(UnitSlotHex hex)
-    {
-        if (selection == null || selection.SelectedTroop == null)
-        {
-            Debug.Log("[HexPlacement] Seçili birlik yok.");
-            return;
-        }
-
-        TroopTypeSO troop = selection.SelectedTroop;
-
-        if (countProvider != null && countProvider.GetCount(troop) <= 0)
-        {
-            Debug.Log($"[HexPlacement] {troop.displayName} için asker KALMADI.");
-            return;
-        }
-
+        // Hex'e atama
         if (deploymentState == null)
         {
             Debug.LogWarning("[HexPlacement] DeploymentState atanmamış.");
@@ -78,25 +44,23 @@ public class HexPlacementInput : MonoBehaviour
             return;
         }
 
-        if (countProvider != null)
-        {
-            bool consumed = countProvider.TryConsumeOne(troop);
-            Debug.Log($"[HexPlacement] {troop.displayName} -> 1 asker harcandı? {consumed}");
-        }
+        // 1 asker harca
+        bool consumed = armyState.TryConsumeOne(troop);
+        Debug.Log($"[HexPlacement] {troop.displayName} -> 1 asker harcandı? {consumed}");
 
         // UI sayıları yenile
         if (troopUI != null)
             troopUI.RefreshCounts();
 
         // Army görsellerini yenile
-        if (armySpawner != null)
-            armySpawner.RefreshVisuals();
+        
     }
 
+    // Hex'ten 1 asker geri alma
     private void TryRemoveFromHex(UnitSlotHex hex)
     {
-        if (deploymentState == null)
-            return;
+        if (hex == null) return;
+        if (deploymentState == null) return;
 
         TroopTypeSO removedTroop;
         bool removed = deploymentState.TryRemoveOneTroopFromHex(hex, out removedTroop);
@@ -107,15 +71,16 @@ public class HexPlacementInput : MonoBehaviour
             return;
         }
 
-        if (countProvider != null)
-            countProvider.AddTroops(removedTroop, 1);
+        // 1 asker geri ver
+        if (armyState != null)
+            armyState.AddTroops(removedTroop, 1);
 
+        // UI sayıları yenile
         if (troopUI != null)
             troopUI.RefreshCounts();
 
-        if (armySpawner != null)
-            armySpawner.RefreshVisuals();
-
-        Debug.Log($"[HexPlacement] {removedTroop.displayName} -> 1 asker geri alındı.");
+        // Army görsellerini yenile
+        if (troopUI != null)
+            troopUI.RefreshCounts();
     }
 }

@@ -13,6 +13,14 @@ public class TroopButtonView : MonoBehaviour
     private TroopSelectionController _selection;
     private TroopTypeSO _troop;
 
+
+
+    //  EKLENDİ: UI refresh için dışarıdan troop okunabilsin
+    public TroopTypeSO Troop => _troop;
+
+    //  EKLENDİ: TroopSelectionUI ile uyum (SetCount -> RefreshCount)
+    public void SetCount(int count) => RefreshCount(count);
+
     public void Init(TroopTypeSO troop, int index, TroopSelectionController selection, int initialCount)
     {
         _troop = troop;

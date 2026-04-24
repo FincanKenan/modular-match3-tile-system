@@ -1,44 +1,83 @@
+ï»¿using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class TroopCountProvider : MonoBehaviour
 {
-    [SerializeField] private PlayerArmyState armyState;
+    [Header("References")]
+    public PlayerArmyState armyState;
 
-    private void Awake()
+    public event Action OnCountsChanged;
+
+    private void OnEnable()
     {
-        if (armyState == null)
-        {
-            armyState = FindFirstObjectByType<PlayerArmyState>();
-        }
-
-        if (armyState == null)
-            Debug.LogWarning("[TroopCountProvider] Sahne içinde PlayerArmyState bulunamadý.");
+        BindArmyState();
     }
 
-    /// <summary> Belirli bir birlikten kaç asker var? </summary>
+    private void OnDisable()
+    {
+        UnbindArmyState();
+    }
+
+    private void BindArmyState()
+    {
+        if (armyState == null)
+            armyState = FindFirstObjectByType<PlayerArmyState>();
+
+        if (armyState != null)
+        {
+            armyState.OnInventoryChanged += HandleInventoryChanged;
+            Debug.Log("[TroopCountProvider] ArmyState baÄŸlandÄ± -> " + armyState.name);
+        }
+        else
+        {
+            Debug.LogWarning("[TroopCountProvider] PlayerArmyState bulunamadÄ±.");
+        }
+    }
+
+    private void UnbindArmyState()
+    {
+        if (armyState != null)
+            armyState.OnInventoryChanged -= HandleInventoryChanged;
+    }
+
+    private void HandleInventoryChanged()
+    {
+        OnCountsChanged?.Invoke();
+    }
+
     public int GetCount(TroopTypeSO troop)
     {
-        if (armyState == null || troop == null)
-            return 0;
+        if (troop == null || armyState == null) return 0;
 
-        return armyState.GetCount(troop);
+        var stacks = armyState.TroopStacks;
+        if (stacks == null) return 0;
+
+        for (int i = 0; i < stacks.Count; i++)
+        {
+            var s = stacks[i];
+            if (s != null && s.troop == troop)
+                return s.count;
+        }
+        return 0;
     }
 
-    /// <summary> Bu birlikten 1 asker harcamaya çalýþýr. Baþarýlýysa true döner. </summary>
-    public bool TryConsumeOne(TroopTypeSO troop)
+    // âœ… UI bununla sadece "elde olan" trooplarÄ± Ã¼retir
+    public List<TroopTypeSO> GetOwnedTroops()
     {
-        if (armyState == null || troop == null)
-            return false;
+        var result = new List<TroopTypeSO>();
+        if (armyState == null || armyState.TroopStacks == null) return result;
 
-        return armyState.TryConsumeTroops(troop, 1);
-    }
+        for (int i = 0; i < armyState.TroopStacks.Count; i++)
+        {
+            var s = armyState.TroopStacks[i];
+            if (s == null || s.troop == null) continue;
+            if (s.count <= 0) continue;
 
-    /// <summary> Dýþarýdan ekstra asker eklemek istersen (match ödülü vs.) </summary>
-    public void AddTroops(TroopTypeSO troop, int amount)
-    {
-        if (armyState == null || troop == null || amount <= 0)
-            return;
+            if (!result.Contains(s.troop))
+                result.Add(s.troop);
+        }
 
-        armyState.AddTroops(troop, amount);
+        return result;
     }
 }

@@ -1,8 +1,11 @@
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class PlayerArmyState : MonoBehaviour
 {
+    public event Action OnInventoryChanged;
+
     [Header("Config")]
     public PlayerArmyConfig config;
 
@@ -16,6 +19,13 @@ public class PlayerArmyState : MonoBehaviour
         public int count;
     }
 
+    [Header("Runtime Troop Inventory")]
+    public List<TroopStack> TroopStacks = new List<TroopStack>();
+
+    // ✅ Slotlara hangi troop’un takılı olduğunu tutar
+    // slotTroops.Count = MaxSlotCount kadar olur (initte hazırlanır)
+    [Header("Runtime Slot Loadout")]
+    [SerializeField] private List<TroopTypeSO> slotTroops = new List<TroopTypeSO>();
 
     private bool _initialized = false;
 
@@ -23,14 +33,13 @@ public class PlayerArmyState : MonoBehaviour
     {
         get
         {
-            EnsureInitialized();   // <<< �NEML�
+            EnsureInitialized();
             if (config == null) return 0;
-            int max = config.MaxSlotCount;
-            return Mathf.Clamp(currentUnitSlots, 0, max);
+            return Mathf.Clamp(currentUnitSlots, 0, config.MaxSlotCount);
         }
     }
 
-    void Awake()
+    private void Awake()
     {
         EnsureInitialized();
     }
@@ -39,110 +48,112 @@ public class PlayerArmyState : MonoBehaviour
     {
         if (_initialized) return;
 
+        int maxSlots = (config != null) ? config.MaxSlotCount : 0;
+
         if (config != null)
         {
-            int max = config.MaxSlotCount;
             currentUnitSlots = Mathf.Clamp(
                 currentUnitSlots > 0 ? currentUnitSlots : config.startingUnitSlots,
                 1,
-                max
+                config.MaxSlotCount
             );
-
-            Debug.Log($"[PlayerArmyState] Init. config={config.name}, startingSlots={config.startingUnitSlots}, max={config.MaxSlotCount}, current={currentUnitSlots}");
         }
-        else
+
+        // ✅ Slot listesi hazırlanır
+        if (maxSlots > 0)
         {
-            Debug.LogWarning("[PlayerArmyState] Config yok!");
+            if (slotTroops == null) slotTroops = new List<TroopTypeSO>();
+            if (slotTroops.Count != maxSlots)
+            {
+                slotTroops.Clear();
+                for (int i = 0; i < maxSlots; i++)
+                    slotTroops.Add(null);
+            }
         }
 
         _initialized = true;
     }
 
-    public void SetUnitSlots(int newCount)
-    {
-        EnsureInitialized();
-        if (config == null) return;
-        currentUnitSlots = Mathf.Clamp(newCount, 1, config.MaxSlotCount);
-    }
-
-    public void IncreaseUnitSlots(int amount)
-    {
-        EnsureInitialized();
-        if (config == null) return;
-        currentUnitSlots = Mathf.Clamp(currentUnitSlots + amount, 1, config.MaxSlotCount);
-        Debug.Log($"[PlayerArmyState] A��k unit slot say�s�: {currentUnitSlots}");
-    }
-
+    // ----------------------------------------------------
+    // ✅ ArmySpawnerHorizontal’ın istediği metod
+    // ----------------------------------------------------
     public TroopTypeSO GetTroopInSlot(int slotIndex)
     {
         EnsureInitialized();
-        if (config == null || config.slotTroops == null) return null;
-        if (slotIndex < 0 || slotIndex >= CurrentUnitSlots) return null;
-
-        return config.slotTroops[slotIndex];
+        if (slotTroops == null) return null;
+        if (slotIndex < 0 || slotIndex >= slotTroops.Count) return null;
+        return slotTroops[slotIndex];
     }
 
-    public bool IsTroopEquipped(TroopTypeSO troop)
+    // Slot’a troop tak (selection sistemi burayı çağırmalı)
+    public bool SetTroopInSlot(int slotIndex, TroopTypeSO troop)
     {
         EnsureInitialized();
-        if (troop == null || config == null || config.slotTroops == null)
-            return false;
+        if (slotTroops == null) return false;
+        if (slotIndex < 0 || slotIndex >= slotTroops.Count) return false;
 
-        int slots = CurrentUnitSlots;
-        for (int i = 0; i < slots; i++)
+        slotTroops[slotIndex] = troop;
+        OnInventoryChanged?.Invoke();
+        return true;
+    }
+
+    // ----------------------------------------------------
+    // ✅ MatchRewardCollector’ın kullandıkları
+    // ----------------------------------------------------
+
+    // Şimdilik equipped = herhangi bir slota takılı mı?
+    public bool IsTroopEquipped(TroopTypeSO troop)
+    {
+        if (troop == null) return false;
+        EnsureInitialized();
+        if (slotTroops == null) return false;
+
+        for (int i = 0; i < slotTroops.Count; i++)
         {
-            if (config.slotTroops[i] == troop)
+            if (slotTroops[i] == troop)
                 return true;
         }
         return false;
     }
 
-    public int GetSlotIndexOfTroop(TroopTypeSO troop)
+    public void IncreaseUnitSlots(int amount)
     {
         EnsureInitialized();
-        if (troop == null || config == null || config.slotTroops == null)
-            return -1;
+        if (amount <= 0) return;
 
-        int slots = CurrentUnitSlots;
-        for (int i = 0; i < slots; i++)
-        {
-            if (config.slotTroops[i] == troop)
-                return i;
-        }
-        return -1;
+        int max = (config != null) ? config.MaxSlotCount : int.MaxValue;
+        currentUnitSlots = Mathf.Clamp(currentUnitSlots + amount, 0, max);
+
+        OnInventoryChanged?.Invoke();
     }
 
-    [Header("Runtime Troop Inventory")]
-    public List<TroopStack> troopStacks = new List<TroopStack>();
+    // ----------------------------------------------------
+    // ✅ Envanter API (UI / ödül sistemi burayı kullanır)
+    // ----------------------------------------------------
 
-    // Belirli bir birlikten ka� asker var?
-    public int GetCount(TroopTypeSO troop)
-    {
-        var stack = troopStacks.Find(s => s.troop == troop);
-        return stack != null ? stack.count : 0;
-    }
-
-    // Match�ten asker eklerken bunu kullanaca��z
     public void AddTroops(TroopTypeSO troop, int amount)
     {
-        var stack = troopStacks.Find(s => s.troop == troop);
-        if (stack == null)
-        {
-            stack = new TroopStack { troop = troop, count = 0 };
-            troopStacks.Add(stack);
-        }
+        if (troop == null || amount <= 0) return;
 
-        stack.count += amount;
+        var stack = TroopStacks.Find(s => s.troop == troop);
+        if (stack != null)
+            stack.count += amount;
+        else
+            TroopStacks.Add(new TroopStack { troop = troop, count = amount });
+
+        OnInventoryChanged?.Invoke();
     }
 
-    // Unit slot�a yerle�tirirken asker �harcamak� i�in
-    public bool TryConsumeTroops(TroopTypeSO troop, int amount)
+    public bool TryConsumeOne(TroopTypeSO troop)
     {
-        var stack = troopStacks.Find(s => s.troop == troop);
-        if (stack == null || stack.count < amount)
-            return false;
+        if (troop == null) return false;
 
-        stack.count -= amount;
+        var stack = TroopStacks.Find(s => s.troop == troop);
+        if (stack == null || stack.count <= 0) return false;
+
+        stack.count--;
+
+        OnInventoryChanged?.Invoke();
         return true;
     }
 }
